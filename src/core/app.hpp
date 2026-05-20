@@ -9,13 +9,7 @@
 #include <memory>
 
 /**
- * @brief Top-level application object.
- *
- * Owns all subsystems (window, GPU context, renderer, meshes) and drives
- * the main loop.
- * Exactly one instance should exist for the lifetime of the
- * process.
- * Destruction order of members matters — see shutdown().
+ * @brief owns window, GPU context, renderer, meshes, and drives the main loop.
  */
 class App {
   bool m_running = false;
@@ -35,13 +29,10 @@ class App {
   void shutdown();
 
 public:
+  int width{};
+  int height{};
   App();
   ~App();
 
-  /**
-   * @brief Initializes all subsystems then runs the main loop until quit.
-   *
-   * @return 0 on clean exit, 1 on init failure.
-   */
   int run();
 };

@@ -1,7 +1,10 @@
 #include "window.hpp"
+#include "SDL3/SDL_video.h"
 
 Window::Window(const std::string& title, int width, int height) {
-  m_window = SDL_CreateWindow(title.c_str(), width, height, 0);
+  // Last param are SDL_WindowFlags.
+  m_window =
+      SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_BORDERLESS);
 }
 
 Window::~Window() {

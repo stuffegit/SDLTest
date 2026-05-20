@@ -17,11 +17,10 @@ static std::vector<Uint8> loadSPV(const std::string& path) {
   return data;
 }
 
-static SDL_GPUShader* createShader(
-  SDL_GPUDevice* device,
-  const std::string& path,
-  SDL_GPUShaderStage stage,
-  Uint32 numUniformBuffers) {
+static SDL_GPUShader* createShader(SDL_GPUDevice* device,
+                                   const std::string& path,
+                                   SDL_GPUShaderStage stage,
+                                   Uint32 numUniformBuffers) {
   auto code = loadSPV(path);
   if (code.empty()) {
     return nullptr;
@@ -42,8 +41,8 @@ static SDL_GPUShader* createShader(
   return shader;
 }
 
-Renderer::Renderer(SDL_GPUDevice* device)
-  : m_device(device) {}
+Renderer::Renderer(SDL_GPUDevice* device) : m_device(device) {
+}
 
 Renderer::~Renderer() {
   if (m_depthTexture) {
@@ -58,14 +57,12 @@ bool Renderer::init(SDL_Window* window) {
   const char* base = SDL_GetBasePath();
   std::string basePath(base ? base : "");
 
-  SDL_GPUShader* vert = createShader(
-    m_device,
-    basePath + "assets/shaders/mesh.vert.spv",
-    SDL_GPU_SHADERSTAGE_VERTEX, 1);
-  SDL_GPUShader* frag = createShader(
-    m_device,
-    basePath + "assets/shaders/mesh.frag.spv",
-    SDL_GPU_SHADERSTAGE_FRAGMENT, 0);
+  SDL_GPUShader* vert =
+      createShader(m_device, basePath + "assets/shaders/mesh.vert.spv",
+                   SDL_GPU_SHADERSTAGE_VERTEX, 1);
+  SDL_GPUShader* frag =
+      createShader(m_device, basePath + "assets/shaders/mesh.frag.spv",
+                   SDL_GPU_SHADERSTAGE_FRAGMENT, 0);
 
   if (!vert || !frag) {
     SDL_ReleaseGPUShader(m_device, vert);
@@ -83,8 +80,8 @@ bool Renderer::init(SDL_Window* window) {
 
   // Vertex buffer layout: tells the GPU how to step through the buffer.
   // pitch = stride in bytes between consecutive vertices (8 floats = 32 bytes).
-  // VERTEX input_rate = advance one vertex per vertex (vs. INSTANCE = per instance).
-  // This must exactly match the Vertex struct layout in mesh.cpp.
+  // VERTEX input_rate = advance one vertex per vertex (vs. INSTANCE = per
+  // instance). This must exactly match the Vertex struct layout in mesh.cpp.
   SDL_GPUVertexBufferDescription vertexBufferDesc = {};
   vertexBufferDesc.slot = 0;
   vertexBufferDesc.pitch = sizeof(float) * 8;
@@ -94,15 +91,15 @@ bool Renderer::init(SDL_Window* window) {
   // location = the number in the shader's `layout(location = N) in ...`.
   // offset = byte offset from the start of each vertex to this field.
   SDL_GPUVertexAttribute attributes[3] = {};
-  attributes[0].location = 0;           // inPosition in the vertex shader
+  attributes[0].location = 0; // inPosition in the vertex shader
   attributes[0].buffer_slot = 0;
   attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   attributes[0].offset = 0;
-  attributes[1].location = 1;           // inNormal
+  attributes[1].location = 1; // inNormal
   attributes[1].buffer_slot = 0;
   attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   attributes[1].offset = sizeof(float) * 3;
-  attributes[2].location = 2;           // inTexCoord
+  attributes[2].location = 2; // inTexCoord
   attributes[2].buffer_slot = 0;
   attributes[2].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
   attributes[2].offset = sizeof(float) * 6;
@@ -127,8 +124,8 @@ bool Renderer::init(SDL_Window* window) {
   rasterState.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
 
   // The pipeline must know the exact pixel format of the render target it will
-  // write to. We query it from the swapchain rather than hard-coding it, because
-  // the format can differ between platforms and display configurations.
+  // write to. We query it from the swapchain rather than hard-coding it,
+  // because the format can differ between platforms and display configurations.
   SDL_GPUColorTargetDescription colorDesc = {};
   colorDesc.format = SDL_GetGPUSwapchainTextureFormat(m_device, window);
 
@@ -136,7 +133,8 @@ bool Renderer::init(SDL_Window* window) {
   pipelineInfo.vertex_shader = vert;
   pipelineInfo.fragment_shader = frag;
   pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-  pipelineInfo.vertex_input_state.vertex_buffer_descriptions = &vertexBufferDesc;
+  pipelineInfo.vertex_input_state.vertex_buffer_descriptions =
+      &vertexBufferDesc;
   pipelineInfo.vertex_input_state.num_vertex_buffers = 1;
   pipelineInfo.vertex_input_state.vertex_attributes = attributes;
   pipelineInfo.vertex_input_state.num_vertex_attributes = 3;
@@ -144,27 +142,31 @@ bool Renderer::init(SDL_Window* window) {
   pipelineInfo.rasterizer_state = rasterState;
   pipelineInfo.target_info.color_target_descriptions = &colorDesc;
   pipelineInfo.target_info.num_color_targets = 1;
-  // has_depth_stencil_target + format must match what render() passes as depthTarget,
-  // or the pipeline is incompatible with the render pass and the draw is undefined.
-  pipelineInfo.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+  // has_depth_stencil_target + format must match what render() passes as
+  // depthTarget, or the pipeline is incompatible with the render pass and the
+  // draw is undefined.
+  pipelineInfo.target_info.depth_stencil_format =
+      SDL_GPU_TEXTUREFORMAT_D16_UNORM;
   pipelineInfo.target_info.has_depth_stencil_target = true;
 
-  // After SDL_CreateGPUGraphicsPipeline the shader objects are no longer needed;
-  // their SPIR-V bytecode has been compiled into the pipeline.
+  // After SDL_CreateGPUGraphicsPipeline the shader objects are no longer
+  // needed; their SPIR-V bytecode has been compiled into the pipeline.
   m_pipeline = SDL_CreateGPUGraphicsPipeline(m_device, &pipelineInfo);
 
   SDL_ReleaseGPUShader(m_device, vert);
   SDL_ReleaseGPUShader(m_device, frag);
 
   if (!m_pipeline) {
-    std::cerr << "SDL_CreateGPUGraphicsPipeline failed: " << SDL_GetError() << '\n';
+    std::cerr << "SDL_CreateGPUGraphicsPipeline failed: " << SDL_GetError()
+              << '\n';
     return false;
   }
 
   // Depth buffer: a texture the same size as the window, one float per pixel.
   // D16_UNORM = 16-bit normalized depth values in [0, 1].
-  // The GPU writes depth here during rendering and reads it back for the LESS test.
-  // We use pixel size (not logical size) to match the swapchain resolution exactly.
+  // The GPU writes depth here during rendering and reads it back for the LESS
+  // test. We use pixel size (not logical size) to match the swapchain
+  // resolution exactly.
   int w, h;
   SDL_GetWindowSizeInPixels(window, &w, &h);
 
@@ -186,21 +188,24 @@ bool Renderer::init(SDL_Window* window) {
   return true;
 }
 
-void Renderer::render(SDL_GPUCommandBuffer* cmdBuf, SDL_GPUTexture* swapchainTexture,
-                      const Mesh& mesh, const glm::mat4& mvp) {
-  // CLEAR load_op = discard whatever was in the texture last frame and fill with
-  // the specified color. STORE store_op = keep the result so the swapchain can
-  // display it. The depth buffer uses DONT_CARE for store because we never need
-  // to read it after the frame — next frame starts with a fresh CLEAR anyway.
+void Renderer::render(SDL_GPUCommandBuffer* cmdBuf,
+                      SDL_GPUTexture* swapchainTexture, const Mesh& mesh,
+                      const glm::mat4& mvp) {
+  // CLEAR load_op = discard whatever was in the texture last frame and fill
+  // with the specified color. STORE store_op = keep the result so the swapchain
+  // can display it. The depth buffer uses DONT_CARE for store because we never
+  // need to read it after the frame — next frame starts with a fresh CLEAR
+  // anyway.
   SDL_GPUColorTargetInfo colorTarget = {};
   colorTarget.texture = swapchainTexture;
   colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
   colorTarget.store_op = SDL_GPU_STOREOP_STORE;
   colorTarget.clear_color = {0.05f, 0.05f, 0.1f, 1.0f};
 
-  // clear_depth = 1.0f fills the buffer with the maximum depth value (far plane).
-  // Every fragment starts "infinitely far away" so the very first drawn pixel
-  // always wins the depth test, and subsequent draws only win if they're closer.
+  // clear_depth = 1.0f fills the buffer with the maximum depth value (far
+  // plane). Every fragment starts "infinitely far away" so the very first drawn
+  // pixel always wins the depth test, and subsequent draws only win if they're
+  // closer.
   SDL_GPUDepthStencilTargetInfo depthTarget = {};
   depthTarget.texture = m_depthTexture;
   depthTarget.load_op = SDL_GPU_LOADOP_CLEAR;
@@ -210,7 +215,8 @@ void Renderer::render(SDL_GPUCommandBuffer* cmdBuf, SDL_GPUTexture* swapchainTex
   // A render pass groups all draw calls that share the same render targets.
   // GPU drivers use this boundary to optimize memory bandwidth (tile-based GPUs
   // like mobile Adreno/Mali especially benefit from knowing load/store intent).
-  SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmdBuf, &colorTarget, 1, &depthTarget);
+  SDL_GPURenderPass* pass =
+      SDL_BeginGPURenderPass(cmdBuf, &colorTarget, 1, &depthTarget);
 
   SDL_BindGPUGraphicsPipeline(pass, m_pipeline);
   // Push constants: small uniform data uploaded inline into the command buffer.

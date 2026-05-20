@@ -31,7 +31,7 @@ public:
    * @return nullptr on file-not-found or GPU upload failure.
    */
   [[nodiscard]] static std::unique_ptr<Mesh> load(SDL_GPUDevice* device,
-                                                   const std::string& path);
+                                                  const std::string& path);
 
   /** @brief Returns false if the vertex buffer failed to upload. */
   [[nodiscard]] bool isValid() const;
@@ -39,7 +39,8 @@ public:
   /**
    * @brief Binds the vertex buffer and issues the draw call.
    *
-   * Must be called inside an active render pass with a compatible pipeline bound.
+   * Must be called inside an active render pass with a compatible pipeline
+   * bound.
    */
   void draw(SDL_GPURenderPass* pass) const;
 };

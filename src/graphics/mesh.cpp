@@ -21,10 +21,13 @@ struct Vertex {
 //   1. Create a transfer buffer — this lives in CPU-visible memory (RAM or
 //      a host-coherent heap) that the CPU can map and write into freely.
 //   2. SDL_Map/Unmap: write vertex data into the transfer buffer from the CPU.
-//   3. Record a copy pass: tell the GPU to DMA-copy from transfer buffer → VRAM.
-//   4. Submit and release the transfer buffer — it's no longer needed after the copy.
+//   3. Record a copy pass: tell the GPU to DMA-copy from transfer buffer →
+//   VRAM.
+//   4. Submit and release the transfer buffer — it's no longer needed after the
+//   copy.
 //
-// This is the standard Vulkan staging buffer pattern; SDL_GPU just names it clearly.
+// This is the standard Vulkan staging buffer pattern; SDL_GPU just names it
+// clearly.
 static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
                                          const std::vector<Vertex>& vertices) {
   Uint32 size = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
@@ -38,7 +41,8 @@ static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
     return nullptr;
   }
 
-  // Staging buffer: CPU-writable memory used once for the upload, then discarded.
+  // Staging buffer: CPU-writable memory used once for the upload, then
+  // discarded.
   SDL_GPUTransferBufferCreateInfo tbInfo = {};
   tbInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
   tbInfo.size = size;
@@ -71,13 +75,13 @@ static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
   SDL_UploadToGPUBuffer(copy, &src, &dst, false);
   SDL_EndGPUCopyPass(copy);
   SDL_SubmitGPUCommandBuffer(cmd);
-  SDL_ReleaseGPUTransferBuffer(device, tb);  // staging memory no longer needed
+  SDL_ReleaseGPUTransferBuffer(device, tb); // staging memory no longer needed
 
   return buf;
 }
 
-Mesh::Mesh(SDL_GPUDevice* device)
-  : m_device(device) {}
+Mesh::Mesh(SDL_GPUDevice* device) : m_device(device) {
+}
 
 Mesh::~Mesh() {
   if (m_vertexBuffer) {
@@ -85,13 +89,15 @@ Mesh::~Mesh() {
   }
 }
 
-std::unique_ptr<Mesh> Mesh::load(SDL_GPUDevice* device, const std::string& path) {
+std::unique_ptr<Mesh> Mesh::load(SDL_GPUDevice* device,
+                                 const std::string& path) {
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
   std::vector<tinyobj::material_t> materials;
   std::string warn, err;
 
-  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.c_str())) {
+  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
+                        path.c_str())) {
     std::cerr << "Failed to load mesh: " << path << '\n';
     if (!err.empty()) {
       std::cerr << err << '\n';

@@ -12,7 +12,8 @@ class Window {
   SDL_Window* m_window = nullptr;
 
 public:
-  /** @brief Creates and opens a window with the given title and pixel dimensions. */
+  /** @brief Creates and opens a window with the given title and pixel
+   * dimensions. */
   Window(const std::string& title, int width, int height);
   ~Window();
 
@@ -20,9 +21,12 @@ public:
   [[nodiscard]] bool isValid() const;
 
   /**
-   * @brief Raw SDL_Window pointer for subsystems that need it (GPUContext, etc.).
+   * @brief Raw SDL_Window pointer for subsystems that need it (GPUContext,
+   * etc.).
    *
    * Remains valid for the lifetime of this Window.
    */
-  [[nodiscard]] SDL_Window* get() const { return m_window; }
+  [[nodiscard]] SDL_Window* get() const {
+    return m_window;
+  }
 };

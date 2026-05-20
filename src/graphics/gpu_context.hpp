@@ -25,7 +25,10 @@ public:
   /**
    * @brief Non-owning device pointer.
    *
-   * Valid for the lifetime of this GPUContext. Pass to Renderer and Mesh::load().
+   * Valid for the lifetime of this GPUContext. Pass to Renderer and
+   * Mesh::load().
    */
-  [[nodiscard]] SDL_GPUDevice* device() const { return m_device; }
+  [[nodiscard]] SDL_GPUDevice* device() const {
+    return m_device;
+  }
 };

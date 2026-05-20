@@ -1,2 +1,9 @@
 CompileFlags:
   CompilationDatabase: build/debug
+  Compiler: C:/msys/ucrt64/bin/g++.exe
+
+If:
+  PathMatch: .*\.(cpp|hpp|c|h)$
+  CompileFlags:
+    Add: [-std=c++20]
+    Remove: ["-fms.*", "-D_DLL", "-D_MT", "--dependent-lib=.*"]
