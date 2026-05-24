@@ -3,44 +3,38 @@
 #include "mesh.hpp"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <vector>
 
-/**
- * @brief Owns the graphics pipeline and per-frame GPU resources (depth buffer).
- *
- * "A pipeline is a compiled GPU object that encodes shader stages, vertex
- * layout, depth testing, and rasterizer settings all at once. It is created
- * once in init() and reused every frame. Switching pipelines mid-frame is
- * expensive, so a future engine would batch draw calls by pipeline."
- */
+struct RenderObject {
+  const Mesh* mesh;
+  glm::mat4 modelView;
+  glm::mat4 proj;
+  glm::vec4 color;
+};
+
+struct FogParams {
+  float strength = 1.0f;
+  float depthStart = 9.0f;
+  float depthEnd = 28.0f;
+  float sideStart = 5.0f;
+  float sideEnd = 10.0f;
+};
+
 class Renderer {
   SDL_GPUDevice* m_device = nullptr;
   SDL_GPUGraphicsPipeline* m_pipeline = nullptr;
   SDL_GPUTexture* m_depthTexture = nullptr;
+  FogParams m_fog;
 
 public:
-  /** @brief device is non-owning — must remain valid for the lifetime of this
-   * Renderer. */
   explicit Renderer(SDL_GPUDevice* device);
   ~Renderer();
 
-  /**
-   * @brief Compiles the graphics pipeline and creates the depth buffer.
-   *
-   * @param window Used to query the swapchain pixel format and window size.
-   *               Must already be claimed by a GPUContext before calling this.
-   * @return false on any GPU resource creation failure.
-   */
   [[nodiscard]] bool init(SDL_Window* window);
+  void setFog(const FogParams& fog) {
+    m_fog = fog;
+  }
 
-  /**
-   * @brief Records one frame: clear, draw mesh, end pass.
-   *
-   * @param cmdBuf           Active command buffer for this frame.
-   * @param swapchainTexture Render target from SDL_AcquireGPUSwapchainTexture.
-   * @param mesh             Geometry to draw — must be valid.
-   * @param mvp              Model-view-projection matrix pushed to the vertex
-   * shader.
-   */
   void render(SDL_GPUCommandBuffer* cmdBuf, SDL_GPUTexture* swapchainTexture,
-              const Mesh& mesh, const glm::mat4& mvp);
+              const std::vector<RenderObject>& objects);
 };

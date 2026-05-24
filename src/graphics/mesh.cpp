@@ -8,31 +8,13 @@
 
 struct Vertex {
   float px, py, pz;
-  float nx, ny, nz;
   float u, v;
 };
 
-// Two-step transfer buffer upload pattern.
-//
-// The GPU vertex buffer (SDL_GPUBuffer) lives in VRAM on discrete GPUs.
-// VRAM is fast for the GPU to read but the CPU cannot write to it directly.
-// To get data there we need a staging step:
-//
-//   1. Create a transfer buffer — this lives in CPU-visible memory (RAM or
-//      a host-coherent heap) that the CPU can map and write into freely.
-//   2. SDL_Map/Unmap: write vertex data into the transfer buffer from the CPU.
-//   3. Record a copy pass: tell the GPU to DMA-copy from transfer buffer →
-//   VRAM.
-//   4. Submit and release the transfer buffer — it's no longer needed after the
-//   copy.
-//
-// This is the standard Vulkan staging buffer pattern; SDL_GPU just names it
-// clearly.
 static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
                                          const std::vector<Vertex>& vertices) {
   Uint32 size = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
 
-  // Final destination: GPU-side vertex buffer in VRAM.
   SDL_GPUBufferCreateInfo bufInfo = {};
   bufInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
   bufInfo.size = size;
@@ -41,8 +23,6 @@ static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
     return nullptr;
   }
 
-  // Staging buffer: CPU-writable memory used once for the upload, then
-  // discarded.
   SDL_GPUTransferBufferCreateInfo tbInfo = {};
   tbInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
   tbInfo.size = size;
@@ -52,16 +32,10 @@ static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
     return nullptr;
   }
 
-  // Map gives a raw CPU pointer into the staging buffer's memory.
-  // SDL_memcpy then copies our vertex data into it.
   void* mapped = SDL_MapGPUTransferBuffer(device, tb, false);
   SDL_memcpy(mapped, vertices.data(), size);
   SDL_UnmapGPUTransferBuffer(device, tb);
 
-  // A copy pass is like a render pass but for data movement: it records GPU
-  // DMA commands (transfer buffer → vertex buffer) into a command buffer,
-  // then submits them to the GPU queue. The CPU blocks until done because
-  // we need the buffer ready before the first render frame.
   SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device);
   SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(cmd);
 
@@ -75,9 +49,26 @@ static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
   SDL_UploadToGPUBuffer(copy, &src, &dst, false);
   SDL_EndGPUCopyPass(copy);
   SDL_SubmitGPUCommandBuffer(cmd);
-  SDL_ReleaseGPUTransferBuffer(device, tb); // staging memory no longer needed
+  SDL_ReleaseGPUTransferBuffer(device, tb);
 
   return buf;
+}
+
+std::unique_ptr<Mesh> Mesh::createPlane(SDL_GPUDevice* device, float halfW,
+                                        float halfD) {
+  // CCW winding (normal +Y) matching the cube.obj convention
+  std::vector<Vertex> verts = {
+      {-halfW, 0, -halfD, 0, 0}, {-halfW, 0, halfD, 0, 1},
+      {halfW, 0, halfD, 1, 1},   {-halfW, 0, -halfD, 0, 0},
+      {halfW, 0, halfD, 1, 1},   {halfW, 0, -halfD, 1, 0},
+  };
+  auto mesh = std::unique_ptr<Mesh>(new Mesh(device));
+  mesh->m_vertexCount = static_cast<Uint32>(verts.size());
+  mesh->m_vertexBuffer = uploadVertexBuffer(device, verts);
+  if (!mesh->m_vertexBuffer) {
+    return nullptr;
+  }
+  return mesh;
 }
 
 Mesh::Mesh(SDL_GPUDevice* device) : m_device(device) {
@@ -117,13 +108,6 @@ std::unique_ptr<Mesh> Mesh::load(SDL_GPUDevice* device,
       v.px = attrib.vertices[3 * vi + 0];
       v.py = attrib.vertices[3 * vi + 1];
       v.pz = attrib.vertices[3 * vi + 2];
-
-      if (index.normal_index >= 0) {
-        auto ni = static_cast<size_t>(index.normal_index);
-        v.nx = attrib.normals[3 * ni + 0];
-        v.ny = attrib.normals[3 * ni + 1];
-        v.nz = attrib.normals[3 * ni + 2];
-      }
 
       if (index.texcoord_index >= 0) {
         auto ti = static_cast<size_t>(index.texcoord_index);

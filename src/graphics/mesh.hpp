@@ -33,6 +33,10 @@ public:
   [[nodiscard]] static std::unique_ptr<Mesh> load(SDL_GPUDevice* device,
                                                   const std::string& path);
 
+  /** @brief Creates a flat XZ quad (Y=0) of given half-extents. */
+  [[nodiscard]] static std::unique_ptr<Mesh>
+  createPlane(SDL_GPUDevice* device, float halfW, float halfD);
+
   /** @brief Returns false if the vertex buffer failed to upload. */
   [[nodiscard]] bool isValid() const;
 

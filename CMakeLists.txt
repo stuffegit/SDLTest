@@ -22,13 +22,31 @@ set(GLM_ENABLE_CXX_20 ON CACHE BOOL "" FORCE)
 add_subdirectory(lib/glm EXCLUDE_FROM_ALL)
 add_subdirectory(lib/tinyobjloader EXCLUDE_FROM_ALL)
 
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/lib/imgui)
+add_library(imgui STATIC
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdlgpu3.cpp
+)
+target_include_directories(imgui PUBLIC
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+)
+target_link_libraries(imgui PUBLIC SDL3::SDL3)
+
 add_executable(SDLTest
   src/main.cpp
   ${CORE_PATH}/app.cpp
+  ${CORE_PATH}/settings.cpp
+  ${CORE_PATH}/test_map.cpp
   ${GRAPHICS_PATH}/window.cpp
   ${GRAPHICS_PATH}/gpu_context.cpp
   ${GRAPHICS_PATH}/renderer.cpp
   ${GRAPHICS_PATH}/mesh.cpp
+  ${UI_PATH}/debug_ui.cpp
 )
 
 target_include_directories(SDLTest PRIVATE
@@ -36,8 +54,11 @@ target_include_directories(SDLTest PRIVATE
   ${GRAPHICS_PATH}
   ${UI_PATH}
 )
+target_include_directories(SDLTest SYSTEM PRIVATE
+  ${CMAKE_SOURCE_DIR}/lib/json/single_include
+)
 
-target_link_libraries(SDLTest PRIVATE SDL3::SDL3 glm::glm tinyobjloader)
+target_link_libraries(SDLTest PRIVATE SDL3::SDL3 glm::glm tinyobjloader imgui)
 
 target_compile_definitions(SDLTest PRIVATE
   GLM_FORCE_DEPTH_ZERO_TO_ONE

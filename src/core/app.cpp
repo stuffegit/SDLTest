@@ -1,16 +1,12 @@
 #include "app.hpp"
-#include "SDL3/SDL_oldnames.h"
-#include "SDL3/SDL_video.h"
 #include "gpu_context.hpp"
 #include "renderer.hpp"
+#include "test_map.hpp"
 #include "window.hpp"
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
-
-#define pos_x (2560 / 2) - (width / 2)
-#define pos_y (1440 / 2) - (height / 2)
+#include <vector>
 
 App::App() = default;
 App::~App() {
@@ -18,17 +14,12 @@ App::~App() {
 }
 
 bool App::init() {
-  width = 800;
-  height = 600;
-  // SDL_InitFlags for flags:
-  // audio,video,joystick,haptic,gamepad,events,sensor,camera
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    // SDL_Log("SDL_Init failed!");
     std::cerr << "SDL_Init failed: " << SDL_GetError() << '\n';
     return false;
   }
 
-  m_window = std::make_unique<Window>("SDL3 GPU", width, height);
+  m_window = std::make_unique<Window>("SDL3 GPU", 1920, 1080);
   if (!m_window->isValid()) {
     std::cerr << "Window creation failed: " << SDL_GetError() << '\n';
     return false;
@@ -47,10 +38,20 @@ bool App::init() {
 
   const char* base = SDL_GetBasePath();
   std::string basePath(base ? base : "");
-  m_mesh =
-      Mesh::load(m_gpuContext->device(), basePath + "assets/meshes/cube.obj");
-  if (!m_mesh) {
-    std::cerr << "Mesh load failed\n";
+
+  m_settingsPath = basePath + "settings.json";
+  m_settings = loadSettings(m_settingsPath);
+
+  m_scene = std::make_unique<TestMap>();
+  if (!m_scene->init(m_gpuContext->device(), basePath)) {
+    std::cerr << "Scene init failed\n";
+    return false;
+  }
+
+  SDL_GPUTextureFormat swapchainFmt =
+      SDL_GetGPUSwapchainTextureFormat(m_gpuContext->device(), m_window->get());
+  if (!m_debugUI.init(m_window->get(), m_gpuContext->device(), swapchainFmt)) {
+    std::cerr << "DebugUI init failed\n";
     return false;
   }
 
@@ -61,77 +62,30 @@ bool App::init() {
 void App::handleEvents() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
-
-    // Top-right [X] quits
+    m_debugUI.processEvent(e);
     if (e.type == SDL_EVENT_QUIT) {
       m_running = false;
     }
-
-    if (e.type == SDL_EVENT_KEY_DOWN) {
-      // Esc/q quits
-      if (e.key.key == 27 || e.key.key == 113) {
-        m_running = false;
-      }
-      // W
-      if (e.key.key == 119) {
-        height += 100;
-        (void)SDL_SetWindowSize(m_window->get(), width, height);
-        (void)SDL_SetWindowPosition(m_window->get(), pos_x, pos_y);
-      }
-      // S
-      if (e.key.key == 115) {
-        height -= 100;
-        (void)SDL_SetWindowSize(m_window->get(), width, height);
-        (void)SDL_SetWindowPosition(m_window->get(), pos_x, pos_y);
-      }
-      // A
-      if (e.key.key == 97) {
-        width -= 100;
-        (void)SDL_SetWindowSize(m_window->get(), width, height);
-        (void)SDL_SetWindowPosition(m_window->get(), pos_x, pos_y);
-      }
-      // D
-      if (e.key.key == 100) {
-        width += 100;
-        (void)SDL_SetWindowSize(m_window->get(), width, height);
-        (void)SDL_SetWindowPosition(m_window->get(), pos_x, pos_y);
-      }
-      // SDL_SyncWindow(m_window->get());
-      // SDL_Log("key: %d", e.key.key);
+    if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) {
+      m_running = false;
     }
   }
 }
 
 void App::update(double dt) {
-  m_angleX += static_cast<float>(dt) * 0.6f;
-  m_angleY += static_cast<float>(dt) * 1.1f;
+  m_scene->configure(m_settings);
+  m_scene->update(dt);
 }
 
 void App::render() {
-  // clang-format off
-  glm::mat4 model = glm::rotate(
-    glm::mat4(1.0f), 
-    m_angleX, 
-    glm::vec3(1.0f, 0.0f, 0.0f));
-
-  model = glm::rotate(
-    model, 
-    m_angleY, 
-    glm::vec3(0.0f, 1.0f, 0.0f));
-
-  glm::mat4 view = glm::lookAt(
-    glm::vec3(0.0f, 0.0f, 4.0f), 
-    glm::vec3(0.0f, 0.0f, 0.0f),
-    glm::vec3(0.0f, 1.0f, 0.0f));
-  // clang-format on
-
   int w, h;
   SDL_GetWindowSizeInPixels(m_window->get(), &w, &h);
   float aspect = static_cast<float>(w) / static_cast<float>(h);
-  glm::mat4 proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
-  proj[1][1] *= -1.0f; // Vulkan NDC: Y points down
 
-  glm::mat4 mvp = proj * view * model;
+  std::vector<RenderObject> objects;
+  glm::mat4 view, proj;
+  m_scene->buildFrame(objects, view, proj, aspect);
+  m_renderer->setFog(m_settings.fog);
 
   SDL_GPUCommandBuffer* cmdBuf =
       SDL_AcquireGPUCommandBuffer(m_gpuContext->device());
@@ -142,9 +96,10 @@ void App::render() {
   SDL_GPUTexture* swapchainTexture = nullptr;
   SDL_AcquireGPUSwapchainTexture(cmdBuf, m_window->get(), &swapchainTexture,
                                  nullptr, nullptr);
-
   if (swapchainTexture) {
-    m_renderer->render(cmdBuf, swapchainTexture, *m_mesh, mvp);
+    m_renderer->render(cmdBuf, swapchainTexture, objects);
+    m_debugUI.render(cmdBuf, swapchainTexture, m_settings, m_fps,
+                     m_frameTimeMs);
   }
 
   SDL_SubmitGPUCommandBuffer(cmdBuf);
@@ -167,13 +122,12 @@ int App::run() {
         static_cast<double>(frameStart - last) / static_cast<double>(freq);
     last = frameStart;
 
+    m_fps = (dt > 0.0) ? static_cast<float>(1.0 / dt) : 0.0f;
+    m_frameTimeMs = static_cast<float>(dt * 1000.0);
+
     handleEvents();
     update(dt);
     render();
-
-    m_debugInfo.frameTimeMs = static_cast<float>(dt * 1000.0);
-    m_debugInfo.fps = (dt > 0.0) ? static_cast<float>(1.0 / dt) : 0.0f;
-    m_debugOverlay.update(m_debugInfo);
 
     Uint64 elapsed = SDL_GetPerformanceCounter() - frameStart;
     Uint64 elapsedNS = elapsed * 1'000'000'000 / freq;
@@ -182,12 +136,14 @@ int App::run() {
     }
   }
   printf("\nExit called.\n");
-
   return 0;
 }
 
 void App::shutdown() {
-  m_mesh.reset();
+  saveSettings(m_settings, m_settingsPath);
+  SDL_WaitForGPUIdle(m_gpuContext ? m_gpuContext->device() : nullptr);
+  m_debugUI.shutdown();
+  m_scene.reset();
   m_renderer.reset();
   m_gpuContext.reset();
   m_window.reset();
