@@ -6,14 +6,9 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
-struct Vertex {
-  float px, py, pz;
-  float u, v;
-};
-
 static SDL_GPUBuffer* uploadVertexBuffer(SDL_GPUDevice* device,
                                          const std::vector<Vertex>& vertices) {
-  Uint32 size = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
+  auto size = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
 
   SDL_GPUBufferCreateInfo bufInfo = {};
   bufInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
@@ -58,9 +53,9 @@ std::unique_ptr<Mesh> Mesh::createPlane(SDL_GPUDevice* device, float halfW,
                                         float halfD) {
   // CCW winding (normal +Y) matching the cube.obj convention
   std::vector<Vertex> verts = {
-      {-halfW, 0, -halfD, 0, 0}, {-halfW, 0, halfD, 0, 1},
-      {halfW, 0, halfD, 1, 1},   {-halfW, 0, -halfD, 0, 0},
-      {halfW, 0, halfD, 1, 1},   {halfW, 0, -halfD, 1, 0},
+      {-halfW, 0, -halfD, 0, 0, 0, 1, 0}, {-halfW, 0, halfD, 0, 1, 0, 1, 0},
+      {halfW, 0, halfD, 1, 1, 0, 1, 0},   {-halfW, 0, -halfD, 0, 0, 0, 1, 0},
+      {halfW, 0, halfD, 1, 1, 0, 1, 0},   {halfW, 0, -halfD, 1, 0, 0, 1, 0},
   };
   auto mesh = std::unique_ptr<Mesh>(new Mesh(device));
   mesh->m_vertexCount = static_cast<Uint32>(verts.size());
@@ -87,8 +82,9 @@ std::unique_ptr<Mesh> Mesh::load(SDL_GPUDevice* device,
   std::vector<tinyobj::material_t> materials;
   std::string warn, err;
 
-  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                        path.c_str())) {
+  std::string dir = path.substr(0, path.find_last_of("/\\") + 1);
+  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.c_str(),
+                        dir.c_str())) {
     std::cerr << "Failed to load mesh: " << path << '\n';
     if (!err.empty()) {
       std::cerr << err << '\n';
@@ -113,6 +109,13 @@ std::unique_ptr<Mesh> Mesh::load(SDL_GPUDevice* device,
         auto ti = static_cast<size_t>(index.texcoord_index);
         v.u = attrib.texcoords[2 * ti + 0];
         v.v = attrib.texcoords[2 * ti + 1];
+      }
+
+      if (index.normal_index >= 0) {
+        auto ni = static_cast<size_t>(index.normal_index);
+        v.nx = attrib.normals[3 * ni + 0];
+        v.ny = attrib.normals[3 * ni + 1];
+        v.nz = attrib.normals[3 * ni + 2];
       }
 
       vertices.push_back(v);

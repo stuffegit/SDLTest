@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 
+#include "texture.hpp"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -20,7 +21,8 @@ static std::vector<Uint8> loadSPV(const std::string& path) {
 static SDL_GPUShader* createShader(SDL_GPUDevice* device,
                                    const std::string& path,
                                    SDL_GPUShaderStage stage,
-                                   Uint32 numUniformBuffers) {
+                                   Uint32 numUniformBuffers,
+                                   Uint32 numSamplers = 0) {
   auto code = loadSPV(path);
   if (code.empty()) {
     return nullptr;
@@ -33,6 +35,7 @@ static SDL_GPUShader* createShader(SDL_GPUDevice* device,
   info.format = SDL_GPU_SHADERFORMAT_SPIRV;
   info.stage = stage;
   info.num_uniform_buffers = numUniformBuffers;
+  info.num_samplers = numSamplers;
 
   SDL_GPUShader* shader = SDL_CreateGPUShader(device, &info);
   if (!shader) {
@@ -45,6 +48,9 @@ Renderer::Renderer(SDL_GPUDevice* device) : m_device(device) {
 }
 
 Renderer::~Renderer() {
+  if (m_sampler) {
+    SDL_ReleaseGPUSampler(m_device, m_sampler);
+  }
   if (m_depthTexture) {
     SDL_ReleaseGPUTexture(m_device, m_depthTexture);
   }
@@ -53,16 +59,13 @@ Renderer::~Renderer() {
   }
 }
 
-bool Renderer::init(SDL_Window* window) {
-  const char* base = SDL_GetBasePath();
-  std::string basePath(base ? base : "");
-
+bool Renderer::init(SDL_Window* window, const std::string& basePath) {
   SDL_GPUShader* vert =
       createShader(m_device, basePath + "assets/shaders/mesh.vert.spv",
                    SDL_GPU_SHADERSTAGE_VERTEX, 1);
   SDL_GPUShader* frag =
       createShader(m_device, basePath + "assets/shaders/mesh.frag.spv",
-                   SDL_GPU_SHADERSTAGE_FRAGMENT, 1);
+                   SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
 
   if (!vert || !frag) {
     SDL_ReleaseGPUShader(m_device, vert);
@@ -70,21 +73,24 @@ bool Renderer::init(SDL_Window* window) {
     return false;
   }
 
-  // pos(3) + uv(2) = 5 floats per vertex, must match Vertex in mesh.cpp
   SDL_GPUVertexBufferDescription vertDesc = {};
   vertDesc.slot = 0;
-  vertDesc.pitch = sizeof(float) * 5;
+  vertDesc.pitch = static_cast<Uint32>(sizeof(Vertex));
   vertDesc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
 
-  SDL_GPUVertexAttribute attribs[2] = {};
+  SDL_GPUVertexAttribute attribs[3] = {};
   attribs[0].location = 0;
   attribs[0].buffer_slot = 0;
   attribs[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  attribs[0].offset = 0;
+  attribs[0].offset = static_cast<Uint32>(offsetof(Vertex, px));
   attribs[1].location = 1;
   attribs[1].buffer_slot = 0;
   attribs[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-  attribs[1].offset = sizeof(float) * 3;
+  attribs[1].offset = static_cast<Uint32>(offsetof(Vertex, u));
+  attribs[2].location = 2;
+  attribs[2].buffer_slot = 0;
+  attribs[2].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  attribs[2].offset = static_cast<Uint32>(offsetof(Vertex, nx));
 
   SDL_GPUDepthStencilState depthState = {};
   depthState.enable_depth_test = true;
@@ -109,7 +115,7 @@ bool Renderer::init(SDL_Window* window) {
   pipelineInfo.vertex_input_state.vertex_buffer_descriptions = &vertDesc;
   pipelineInfo.vertex_input_state.num_vertex_buffers = 1;
   pipelineInfo.vertex_input_state.vertex_attributes = attribs;
-  pipelineInfo.vertex_input_state.num_vertex_attributes = 2;
+  pipelineInfo.vertex_input_state.num_vertex_attributes = 3;
   pipelineInfo.depth_stencil_state = depthState;
   pipelineInfo.rasterizer_state = rasterState;
   pipelineInfo.target_info.color_target_descriptions = &colorDesc;
@@ -146,12 +152,31 @@ bool Renderer::init(SDL_Window* window) {
     return false;
   }
 
+  SDL_GPUSamplerCreateInfo samplerInfo = {};
+  samplerInfo.min_filter = SDL_GPU_FILTER_LINEAR;
+  samplerInfo.mag_filter = SDL_GPU_FILTER_LINEAR;
+  samplerInfo.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+  samplerInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  samplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  m_sampler = SDL_CreateGPUSampler(m_device, &samplerInfo);
+  if (!m_sampler) {
+    std::cerr << "Sampler creation failed: " << SDL_GetError() << '\n';
+    return false;
+  }
+
+  m_whiteTexture = Texture::createWhite(m_device);
+  if (!m_whiteTexture) {
+    std::cerr << "White texture creation failed\n";
+    return false;
+  }
+
   return true;
 }
 
 void Renderer::render(SDL_GPUCommandBuffer* cmdBuf,
                       SDL_GPUTexture* swapchainTexture,
-                      const std::vector<RenderObject>& objects) {
+                      const std::vector<RenderObject>& objects,
+                      const glm::mat4& viewMatrix) {
   SDL_GPUColorTargetInfo colorTarget = {};
   colorTarget.texture = swapchainTexture;
   colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
@@ -169,28 +194,57 @@ void Renderer::render(SDL_GPUCommandBuffer* cmdBuf,
 
   SDL_BindGPUGraphicsPipeline(pass, m_pipeline);
 
-  for (const auto& obj : objects) {
-    struct FragData {
-      glm::vec4 color;
-      float fogStrength;
-      float fogStart;
-      float fogEnd;
-      float sideStart;
-      float sideEnd;
-      float _pad0 = 0.0f;
-      float _pad1 = 0.0f;
-      float _pad2 = 0.0f;
-    };
+  glm::vec3 lightDirVS = glm::normalize(glm::mat3(viewMatrix) * m_light.dir);
 
+  for (const auto& obj : objects) {
     struct VertData {
       glm::mat4 modelView;
       glm::mat4 proj;
+      glm::mat4 normalMatrix;
     };
-    VertData vert = {obj.modelView, obj.proj};
+    VertData vert = {
+        obj.modelView,
+        obj.proj,
+        glm::mat4(glm::transpose(glm::inverse(glm::mat3(obj.modelView)))),
+    };
     SDL_PushGPUVertexUniformData(cmdBuf, 0, &vert, sizeof(VertData));
-    FragData frag = {obj.color,      m_fog.strength,  m_fog.depthStart,
-                     m_fog.depthEnd, m_fog.sideStart, m_fog.sideEnd};
+
+    struct FragData {
+      glm::vec4 color;
+      float fogStrength, fogStart, fogEnd, sideStart, sideEnd;
+      float _pad0, _pad1, _pad2;
+      glm::vec4 lightDir;
+      glm::vec4 lightColor;
+      glm::vec4 ambientColor;
+      float shininess, specStrength;
+      float _lpad0, _lpad1;
+    };
+    FragData frag = {
+        obj.color,
+        m_fog.strength,
+        m_fog.depthStart,
+        m_fog.depthEnd,
+        m_fog.sideStart,
+        m_fog.sideEnd,
+        0.0f,
+        0.0f,
+        0.0f,
+        glm::vec4(lightDirVS, 0.0f),
+        glm::vec4(m_light.color, 0.0f),
+        glm::vec4(m_light.ambientColor, 0.0f),
+        obj.shininess,
+        obj.specStrength,
+        0.0f,
+        0.0f,
+    };
     SDL_PushGPUFragmentUniformData(cmdBuf, 0, &frag, sizeof(FragData));
+
+    SDL_GPUTextureSamplerBinding texBinding = {};
+    texBinding.texture =
+        obj.texture ? obj.texture->get() : m_whiteTexture->get();
+    texBinding.sampler = m_sampler;
+    SDL_BindGPUFragmentSamplers(pass, 0, &texBinding, 1);
+
     obj.mesh->draw(pass);
   }
 

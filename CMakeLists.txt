@@ -40,12 +40,14 @@ target_link_libraries(imgui PUBLIC SDL3::SDL3)
 add_executable(SDLTest
   src/main.cpp
   ${CORE_PATH}/app.cpp
+  ${CORE_PATH}/debug_camera.cpp
   ${CORE_PATH}/settings.cpp
   ${CORE_PATH}/test_map.cpp
   ${GRAPHICS_PATH}/window.cpp
   ${GRAPHICS_PATH}/gpu_context.cpp
   ${GRAPHICS_PATH}/renderer.cpp
   ${GRAPHICS_PATH}/mesh.cpp
+  ${GRAPHICS_PATH}/texture.cpp
   ${UI_PATH}/debug_ui.cpp
 )
 
@@ -56,6 +58,7 @@ target_include_directories(SDLTest PRIVATE
 )
 target_include_directories(SDLTest SYSTEM PRIVATE
   ${CMAKE_SOURCE_DIR}/lib/json/single_include
+  ${CMAKE_SOURCE_DIR}/lib/stb
 )
 
 target_link_libraries(SDLTest PRIVATE SDL3::SDL3 glm::glm tinyobjloader imgui)
@@ -114,7 +117,10 @@ add_custom_target(CopyMeshes
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/assets/meshes
     ${CMAKE_BINARY_DIR}/assets/meshes
-  COMMENT "Copying mesh assets"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets/textures
+    ${CMAKE_BINARY_DIR}/assets/textures
+  COMMENT "Copying mesh and texture assets"
 )
 
 add_dependencies(SDLTest Shaders CopyMeshes)

@@ -1,10 +1,11 @@
 #pragma once
 
+#include "debug_camera.hpp"
 #include "debug_ui.hpp"
 #include "gpu_context.hpp"
 #include "renderer.hpp"
-#include "scene.hpp"
 #include "settings.hpp"
+#include "test_map.hpp"
 #include "window.hpp"
 #include <SDL3/SDL.h>
 #include <memory>
@@ -15,7 +16,8 @@ class App {
   std::unique_ptr<Window> m_window;
   std::unique_ptr<GPUContext> m_gpuContext;
   std::unique_ptr<Renderer> m_renderer;
-  std::unique_ptr<Scene> m_scene;
+  std::unique_ptr<TestMap> m_scene;
+  DebugCamera m_debugCam;
   DebugUI m_debugUI;
   Settings m_settings;
   std::string m_settingsPath;

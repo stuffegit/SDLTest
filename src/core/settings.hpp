@@ -5,6 +5,7 @@
 
 struct Settings {
   FogParams fog = {1.0f, 9.0f, 28.0f, 5.0f, 10.0f};
+  LightParams light;
   float cameraOffsetY = 5.0f;
   float cameraOffsetZ = 5.0f;
   float playerSpeed = 5.0f;

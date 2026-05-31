@@ -5,6 +5,7 @@
 #include "window.hpp"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <vector>
 
@@ -30,14 +31,14 @@ bool App::init() {
     return false;
   }
 
+  const char* base = SDL_GetBasePath();
+  std::string basePath(base ? base : "");
+
   m_renderer = std::make_unique<Renderer>(m_gpuContext->device());
-  if (!m_renderer->init(m_window->get())) {
+  if (!m_renderer->init(m_window->get(), basePath)) {
     std::cerr << "Renderer init failed\n";
     return false;
   }
-
-  const char* base = SDL_GetBasePath();
-  std::string basePath(base ? base : "");
 
   m_settingsPath = basePath + "settings.json";
   m_settings = loadSettings(m_settingsPath);
@@ -63,18 +64,31 @@ void App::handleEvents() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     m_debugUI.processEvent(e);
+    m_debugCam.handleEvent(e);
     if (e.type == SDL_EVENT_QUIT) {
       m_running = false;
     }
     if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) {
       m_running = false;
     }
+    if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F && !e.key.repeat) {
+      std::vector<RenderObject> tmp;
+      glm::mat4 sceneView, sceneProj;
+      int w, h;
+      SDL_GetWindowSizeInPixels(m_window->get(), &w, &h);
+      float aspect = static_cast<float>(w) / static_cast<float>(h);
+      m_scene->buildFrame(tmp, sceneView, sceneProj, aspect);
+      m_debugCam.toggle(m_window->get(), sceneView);
+    }
   }
 }
 
 void App::update(double dt) {
+  m_debugCam.update(dt);
   m_scene->configure(m_settings);
-  m_scene->update(dt);
+  if (!m_debugCam.isActive()) {
+    m_scene->update(dt);
+  }
 }
 
 void App::render() {
@@ -83,9 +97,21 @@ void App::render() {
   float aspect = static_cast<float>(w) / static_cast<float>(h);
 
   std::vector<RenderObject> objects;
-  glm::mat4 view, proj;
-  m_scene->buildFrame(objects, view, proj, aspect);
+  glm::mat4 sceneView, proj;
+  m_scene->buildFrame(objects, sceneView, proj, aspect);
+
+  glm::mat4 renderView = sceneView;
+  if (m_debugCam.isActive()) {
+    glm::mat4 debugView = m_debugCam.viewMatrix();
+    glm::mat4 correction = debugView * glm::inverse(sceneView);
+    for (auto& obj : objects) {
+      obj.modelView = correction * obj.modelView;
+    }
+    renderView = debugView;
+  }
+
   m_renderer->setFog(m_settings.fog);
+  m_renderer->setLight(m_settings.light);
 
   SDL_GPUCommandBuffer* cmdBuf =
       SDL_AcquireGPUCommandBuffer(m_gpuContext->device());
@@ -97,7 +123,7 @@ void App::render() {
   SDL_AcquireGPUSwapchainTexture(cmdBuf, m_window->get(), &swapchainTexture,
                                  nullptr, nullptr);
   if (swapchainTexture) {
-    m_renderer->render(cmdBuf, swapchainTexture, objects);
+    m_renderer->render(cmdBuf, swapchainTexture, objects, renderView);
     m_debugUI.render(cmdBuf, swapchainTexture, m_settings, m_fps,
                      m_frameTimeMs);
   }

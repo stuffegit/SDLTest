@@ -59,6 +59,17 @@ void DebugUI::render(SDL_GPUCommandBuffer* cmdBuf,
   if (ImGui::CollapsingHeader("Gameplay", ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::SliderFloat("Player Speed", &settings.playerSpeed, 0.5f, 20.0f);
   }
+  if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::DragFloat3("Direction", &settings.light.dir.x, 0.01f, -1.0f,
+                          1.0f)) {
+      float len = glm::length(settings.light.dir);
+      if (len > 0.0f) {
+        settings.light.dir /= len;
+      }
+    }
+    ImGui::ColorEdit3("Light Color", &settings.light.color.r);
+    ImGui::ColorEdit3("Ambient Color", &settings.light.ambientColor.r);
+  }
   ImGui::End();
 
   ImGui::Render();

@@ -7,7 +7,13 @@ GPUContext::GPUContext(SDL_Window* window) {
   // Vulkan is the only backend that speaks SPIR-V natively; passing this flag
   // avoids SDL trying to fall back to Direct3D or Metal with a shader it can't
   // use.
-  m_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, nullptr);
+#ifdef NDEBUG
+  constexpr bool kGPUDebug = false;
+#else
+  constexpr bool kGPUDebug = true;
+#endif
+  m_device =
+      SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, kGPUDebug, nullptr);
   if (!m_device) {
     std::cerr << "SDL_CreateGPUDevice failed: " << SDL_GetError() << '\n';
     return;
