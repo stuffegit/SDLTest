@@ -6,7 +6,7 @@
 - Simple meshes with hardcoded colours.
 - Debug menu(ImGui) that saves settings(JSON).
 
-![Funnyimage](/readme/26may_2026.jpg "Badass")
+![Funnyimage](/readme/24may_2026.jpg "Badass")
 
 ### Build
 Windows
